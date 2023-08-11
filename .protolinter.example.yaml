@@ -1,0 +1,44 @@
+# Whether to show verbose messages, such as when downloading dependencies.
+#
+# Example:
+# verbose_mode: false
+
+# Whether to omit source file coordinates from error messages.
+#
+# Example:
+# omit_coordinates: false
+
+# List of checks that should be excluded from analysis.
+# method_has_version # checks whether a method specifies a version.
+# method_has_correct_input_name # checks if the method input is named correctly.
+# method_has_http_path # checks if an HTTP path is specified for the method.
+# method_has_body_tag # checks if methods with a required body have the correct body tag.
+# method_has_swagger_tags # checks if a method has appropriate Swagger tags.
+# method_has_swagger_summary # checks if a method has a valid Swagger summary.
+# method_has_swagger_description # checks if a method has a valid Swagger description.
+# field_has_correct_json_name # checks if a field's JSON name tag is correct.
+# field_has_no_description # checks if a field has no description.
+# field_description_starts_with_capital # checks if a field's description starts with a capital letter.
+# field_description_ends_with_dot # checks if a field's description ends with a dot.
+# enum_value_has_comments # checks if an enum value has leading comments.
+#
+# Example:
+# excluded_checks:
+#   - method_has_version
+#   - method_has_correct_input_name
+#   - method_has_http_path
+#   - method_has_body_tag
+#   - method_has_swagger_tags
+#   - method_has_swagger_summary
+#   - method_has_swagger_description
+#   - field_has_correct_json_name
+#   - field_has_no_description
+#   - field_description_starts_with_capital
+#   - field_description_ends_with_dot
+#   - enum_value_has_comments
+
+# List of full protopaths that should be excluded from analysis.
+#
+# Example:
+# excluded_descriptors:
+#   - package.Message.NestedMessage.Field
