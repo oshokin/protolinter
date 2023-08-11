@@ -16,10 +16,16 @@ Protolinter - это инструмент командной строки для
 Вы можете установить Protolinter с помощью команды go install:
 
 ```sh
-go install github.com/oshokin/protolinter/cmd/protolinter
+go install github.com/oshokin/protolinter/cmd/protolinter@latest
 ```
 
-Кроме того, вы можете скомпилировать исполняемый файл с помощью предоставленного файла Makefile:
+Если ваша компания или корпоративная сеть использует настройку GOPROXY, которая может повлиять на установку, убедитесь, что вместо этой команды будет использоваться следующая команда для установки последней версии:
+
+```sh
+GOPROXY=direct go install github.com/oshokin/protolinter/cmd/protolinter@latest
+```
+
+Кроме того, вы можете скомпилировать исполняемый файл, используя предоставленный Makefile:
 
 ```sh
 make build
@@ -46,7 +52,7 @@ Protolinter поддерживает настройку через файл .pro
 
 ## Выполняемые проверки
 
-Protolinter выполняет различные проверки ваших файлов Protocol Buffer для обеспечения их соответствия.\
+Protolinter выполняет различные проверки ваших файлов Protocol Buffer.\
 Следующие проверки могут быть исключены из анализа в файле конфигурации:
 
 - `method_has_version`: Проверяет, указана ли версия для метода.

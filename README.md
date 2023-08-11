@@ -16,7 +16,13 @@ It empowers developers to ensure that their Protocol Buffer files are well-forme
 You can install Protocol Linter using Go's `go install` command:
 
 ```sh
-go install github.com/oshokin/protolinter/cmd/protolinter
+go install github.com/oshokin/protolinter/cmd/protolinter@latest
+```
+
+If your company or corporate network has a GOPROXY setting that may affect the installation, make sure to use the following command instead to install the latest version:
+
+```sh
+GOPROXY=direct go install github.com/oshokin/protolinter/cmd/protolinter@latest
 ```
 
 Alternatively, you can build the executable using the provided Makefile:
