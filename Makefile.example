@@ -1,0 +1,46 @@
+LOCAL_BIN:=$(CURDIR)/bin
+PROTOLINTER_BIN:=$(LOCAL_BIN)/protolinter
+PROTOLINTER_TAG:=latest
+
+ifneq ($(shell $(PROTOLINTER_BIN) --version 2> /dev/null | sed -E 's/protolinter version (\w*)/\1/g'),$(PROTOLINTER_TAG))
+PROTOLINTER_BIN:=
+endif
+
+default: help
+
+.PHONY: install-protolinter
+install-protolinter:
+ifeq ($(wildcard $(PROTOLINTER_BIN)),)
+	$(info Downloading protolinter, version: $(PROTOLINTER_TAG))
+	@mkdir -p $(LOCAL_BIN)
+	GOBIN=$(LOCAL_BIN) go install github.com/oshokin/protolinter@$(PROTOLINTER_TAG)
+PROTOLINTER_BIN:=$(LOCAL_BIN)/protolinter
+endif
+
+.PHONY: generate-pb-lint-config
+generate-pb-lint-config: install-protolinter
+	$(info Generating .protolinter.yaml that excludes all errors found in protobuf files...)
+	$(PROTOLINTER_BIN) print-config -m mimir.yaml > .protolinter.yaml
+
+.PHONY: pb-lint
+pb-lint: install-protolinter
+	$(info Running protolinter for files that were changed in current branch...)
+	@if [ -z "$$(git diff --name-only master -- '*.proto')" ]; then \
+		echo "No changes in '*.proto' files found in git diff."; \
+	else \
+		$(PROTOLINTER_BIN) check $$(git diff --name-only master -- '*.proto'); \
+	fi
+
+.PHONY: pb-lint-full
+pb-lint-full: install-protolinter
+	$(info Running protolinter for all files specified in mimir.yaml...)
+	$(PROTOLINTER_BIN) check -m mimir.yaml
+
+.PHONY: help
+help:
+	@echo "Available targets:"
+	@echo "  help                       Show this help message"
+	@echo "  install-protolinter        Download and install protolinter if it's either not installed or if its version differs from $(PROTOLINTER_TAG)"
+	@echo "  generate-pb-lint-config    Generate .protolinter.yaml. This configuration will exclude protobuf descriptors that are currently throwing errors"
+	@echo "  pb-lint                    Run protolinter on protobuf files that have changed in the current branch"
+	@echo "  pb-lint-full               Run protolinter on all files as specified in mimir.yaml"

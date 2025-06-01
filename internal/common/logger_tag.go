@@ -1,3 +1,4 @@
+// Package common provides common utility functions and constants for logging.
 package common
 
 // Logger tags that are commonly used in logging messages.

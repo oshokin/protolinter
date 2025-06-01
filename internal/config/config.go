@@ -1,63 +1,86 @@
+// Package config provides functionality for loading and working with
+// the configuration settings.
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
+	"regexp"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
-// DefaultConfigName - default configuration file name.
-const DefaultConfigName = ".protolinter.yaml"
+const (
+	// DefaultConfigName - default configuration file name.
+	DefaultConfigName = ".protolinter.yaml"
+
+	goModPath                    = "go.mod"
+	moduleNamePatternGroupsCount = 2
+)
+
+var moduleNamePattern = regexp.MustCompile(`\s*module\s+(?P<module>\S+)`)
 
 // LoadConfig loads the configuration from the specified file using Viper.
 // If the filename is empty, it loads the default configuration file.
-func LoadConfig(filename string) (*Config, error) {
+func LoadConfig(filename, githubURL string, printAllDescriptors bool) (*Config, error) {
 	if filename == "" {
 		filename = DefaultConfigName
 	}
 
-	if _, err := os.Open(filename); os.IsNotExist(err) {
-		return nil, nil
+	var (
+		configFileNotFound bool
+		result             Config
+	)
+
+	viper.SetConfigFile(filename)
+
+	if err := viper.ReadInConfig(); err != nil {
+		configFileNotFound = os.IsNotExist(err) || errors.As(err, &viper.ConfigFileNotFoundError{})
+		if !configFileNotFound {
+			return nil, err
+		}
 	}
 
-	viper.SetConfigName(filename)
+	if !configFileNotFound {
+		if err := viper.Unmarshal(&result); err != nil {
+			return nil, err
+		}
+	}
 
-	err := viper.ReadInConfig()
+	moduleName, err := getModuleName()
 	if err != nil {
 		return nil, err
 	}
 
-	var container Config
+	result.moduleName = moduleName
+	result.githubURL = githubURL
+	result.printAllDescriptors = printAllDescriptors
 
-	err = viper.Unmarshal(&container)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &container
 	result.fillInnerData()
 
-	return result, nil
+	return &result, nil
+}
+
+// MarshalConfig converts the given Config struct to its YAML representation.
+func MarshalConfig(v *Config) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+
+	result, err := yaml.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+
+	return string(result), nil
 }
 
 // GetVerboseMode returns the value of VerboseMode from the Config struct.
 // If the Config is nil or VerboseMode is not set, it returns false.
 func (cfg *Config) GetVerboseMode() bool {
-	if cfg != nil {
-		return cfg.VerboseMode
-	}
-
-	return false
-}
-
-// GetOmitCoordinates returns the value of OmitCoordinates from the Config struct.
-// If the Config is nil or OmitCoordinates is not set, it returns false.
-func (cfg *Config) GetOmitCoordinates() bool {
-	if cfg != nil {
-		return cfg.OmitCoordinates
-	}
-
-	return false
+	return cfg != nil && cfg.VerboseMode
 }
 
 // GetExcludedChecks returns the list of excluded checks from the Config struct.
@@ -78,6 +101,36 @@ func (cfg *Config) GetExcludedDescriptors() []string {
 	}
 
 	return nil
+}
+
+// GetModuleName returns the module name extracted from the go.mod file.
+// If the Config is nil, it returns an empty string.
+func (cfg *Config) GetModuleName() string {
+	if cfg != nil {
+		return cfg.moduleName
+	}
+
+	return ""
+}
+
+// GetGitHubURL returns the custom file repository URL set in the configuration.
+// If the Config is nil or GitHubURL is not set, it returns an empty string.
+func (cfg *Config) GetGitHubURL() string {
+	if cfg != nil {
+		return cfg.githubURL
+	}
+
+	return ""
+}
+
+// GetPrintAllDescriptors returns the value of printAllDescriptors from the Config struct.
+// If the Config is nil, it returns false.
+func (cfg *Config) GetPrintAllDescriptors() bool {
+	if cfg != nil {
+		return cfg.printAllDescriptors
+	}
+
+	return false
 }
 
 // IsCheckExcluded checks if a specific check is excluded based on the configuration.
@@ -107,4 +160,22 @@ func (cfg *Config) fillInnerData() {
 	}
 
 	cfg.excludedChecksMap = checksMap
+}
+
+func getModuleName() (string, error) {
+	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+		return "", nil
+	}
+
+	goModContent, err := os.ReadFile(goModPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s file: %w", goModPath, err)
+	}
+
+	match := moduleNamePattern.FindSubmatch(goModContent)
+	if len(match) < moduleNamePatternGroupsCount {
+		return "", fmt.Errorf("module name not found in %s", goModPath)
+	}
+
+	return string(match[1]), nil
 }

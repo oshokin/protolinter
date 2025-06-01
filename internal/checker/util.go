@@ -1,99 +1,46 @@
 package checker
 
 import (
-	"bytes"
-	"context"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
-
-	"github.com/bufbuild/protocompile"
-	"github.com/oshokin/protolinter/internal/common"
-	"github.com/oshokin/protolinter/internal/config"
-	"github.com/oshokin/protolinter/internal/logger"
 )
 
-const (
-	githubLinkPartsCount      = 4
-	googleProtobufPrefix      = "google/protobuf"
-	googleAPIPrefix           = "google/api/"
-	protocGenOpenAPIV2Prefix  = "protoc-gen-openapiv2/"
-	googleAPIsGitHubPath      = "github.com/googleapis/googleapis"
-	grpcGatewayGitHubPath     = "github.com/grpc-ecosystem/grpc-gateway"
-	githubDomain              = "github.com/"
-	githubDownloadLinkPattern = "https://raw.githubusercontent.com/%s/%s/master/%s"
-)
-
-func getSourceResolver(ctx context.Context, cfg *config.Config) *protocompile.SourceResolver {
-	return &protocompile.SourceResolver{
-		Accessor: func(path string) (io.ReadCloser, error) {
-			_, err := os.Stat(path)
-			if err == nil || strings.HasPrefix(path, googleProtobufPrefix) {
-				return os.Open(path)
-			}
-
-			switch {
-			case strings.HasPrefix(path, googleAPIPrefix):
-				path, err = url.JoinPath(googleAPIsGitHubPath, path)
-				if err != nil {
-					return nil, err
-				}
-			case strings.HasPrefix(path, protocGenOpenAPIV2Prefix):
-				path, err = url.JoinPath(grpcGatewayGitHubPath, path)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			resource := getDownloadLink(path)
-			if cfg.GetVerboseMode() {
-				logger.Warnf(ctx, "Downloading proto dependency, %s: %s, %s: %s",
-					common.FileNameTag, path,
-					common.URLTag, resource)
-			}
-
-			request, err := http.NewRequestWithContext(ctx, http.MethodGet, resource, nil)
-			if err != nil {
-				return nil, err
-			}
-
-			response, err := http.DefaultClient.Do(request)
-			if err != nil {
-				return nil, err
-			}
-			defer response.Body.Close()
-
-			body, err := io.ReadAll(response.Body)
-			if err != nil {
-				return nil, err
-			}
-
-			return io.NopCloser(bytes.NewReader(body)), nil
-		},
-	}
-}
-
-func getDownloadLink(importPath string) string {
-	if !strings.HasPrefix(importPath, githubDomain) {
-		return importPath
-	}
-
-	parts := strings.SplitN(importPath, "/", githubLinkPartsCount)
-	if len(parts) < githubLinkPartsCount {
-		return importPath
-	}
-
+func extractFilesFromPatterns(patterns []string, extension string) ([]string, error) {
 	var (
-		user     = parts[1]
-		repo     = parts[2]
-		filePath = parts[3]
+		alreadyAddedFiles = make(map[string]struct{}, len(patterns))
+		result            = make([]string, 0, len(patterns))
 	)
 
-	return fmt.Sprintf(githubDownloadLinkPattern, user, repo, filePath)
+	for _, pattern := range patterns {
+		files, err := filepath.Glob(pattern)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, file := range files {
+			if _, ok := alreadyAddedFiles[file]; ok {
+				continue
+			}
+
+			alreadyAddedFiles[file] = struct{}{}
+
+			fi, _ := os.Stat(file)
+			if fi.IsDir() {
+				continue
+			}
+
+			if extension != "" &&
+				!strings.EqualFold(filepath.Ext(file), extension) {
+				continue
+			}
+
+			result = append(result, file)
+		}
+	}
+
+	return result, nil
 }
 
 func startsWithCapitalLetter(s string) bool {

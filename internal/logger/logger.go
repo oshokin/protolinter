@@ -57,6 +57,14 @@ func SetLogger(l *zap.SugaredLogger) {
 	global = l
 }
 
+// SetLevel sets the log level for the global logger.
+func SetLevel(level zapcore.Level) {
+	//nolint: errcheck // No need to check the error here.
+	defer global.Sync()
+
+	defaultLevel.SetLevel(level)
+}
+
 // Debug writes a debug level message using the logger from the context.
 func Debug(ctx context.Context, args ...interface{}) {
 	FromContext(ctx).Debug(args...)

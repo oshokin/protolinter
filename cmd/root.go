@@ -8,20 +8,21 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "protolinter",
-	Short: "A tool to lint and analyze Protocol Buffer files",
-	Long: `The 'protolinter' command-line tool empowers developers to lint and analyze
-Protocol Buffer files for compliance with coding conventions, best practices,
-and standards. It assists in ensuring that your Protocol Buffer files are well-formed,
-consistent, and follow recommended guidelines.
+	Short: "Lint and analyze Protocol Buffer files",
+	Long: `The 'protolinter' command-line tool helps developers review and analyze
+Protocol Buffer files for coding conventions, best practices, and standards.
+It ensures your Protocol Buffer files are well-structured, consistent, and adhere
+to recommended guidelines.
 Configuration:
-  The tool supports customization through a '.protolinter.yaml' configuration file.
-  This YAML file can be used to define excluded checks and descriptors, allowing you
-  to fine-tune the analysis to your project's needs.
-Example '.protolinter.yaml' configuration can be found in .protolinter.example.yaml`,
-	Version: "1.0.0",
+  Customize the tool using the configuration file (default filename: '.protolinter.yaml').
+  This YAML configuration lets you exclude checks and descriptors,
+  tailoring the analysis to match your project's needs.
+See '.protolinter.example.yaml' for a sample configuration.`,
+	Version: "1.1.6",
 }
 
 // Execute runs the root command.
+// Everything starts here.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

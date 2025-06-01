@@ -1,73 +1,77 @@
 # Protolinter
 
-Protolinter is a command-line tool to lint and analyze Protocol Buffer files for compliance with coding conventions, best practices, and standards.\
-It empowers developers to ensure that their Protocol Buffer files are well-formed, consistent, and adhere to recommended guidelines.
+Protolinter - это инструмент командной строки для проверки и анализа файлов Protocol Buffer на соответствие лучшим практикам и стандартам разработки.\
+Он дает разработчикам возможность обеспечить правильность структуры файлов Protocol Buffer.
 
-## Features
+## Возможности
 
-- Lint and analyze Protocol Buffer files.
-- Verify compliance with coding conventions and standards.
-- Customizable through `.protolinter.yaml` configuration file.
-- Supports exclusion of specific checks and descriptors.
-- Generate a list of full protobuf element names.
+- Проверка файлов Protocol Buffer на соответствие стандартам разработки.
+- Настраивается через конфигурационный файл `.protolinter.yaml`.
+- Исключение конкретных проверок и дескрипторов в соответствии с вашими потребностями.
+- Создание конфигурации с исключенными элементами Protocol Buffer.
 
-## Installation
+## Установка
 
-You can install Protocol Linter using Go's `go install` command:
-
-```sh
-go install github.com/oshokin/protolinter/cmd/protolinter@latest
-```
-
-If your company or corporate network has a GOPROXY setting that may affect the installation, make sure to use the following command instead to install the latest version:
+Вы можете установить Protolinter с помощью команды go install:
 
 ```sh
-GOPROXY=direct go install github.com/oshokin/protolinter/cmd/protolinter@latest
+go install github.com/oshokin/protolinter@latest
 ```
 
-Alternatively, you can build the executable using the provided Makefile:
+Кроме того, вы можете скомпилировать исполняемый файл, используя предоставленный Makefile:
 
 ```sh
 make build
 ```
 
-The built executable will be located in the `bin` subdirectory.
+Скомпилированный исполняемый файл будет находиться в подкаталоге `bin`.
 
-## Usage
+## Использование
 
 ```sh
-# Lint and analyze protobuf files
-protolinter check [--config=<path>] [--mimir] <file.proto>
+# Проверка и анализ файлов protobuf
+protolinter check [--config=<путь>] [--mimir] <file.proto>
 
-# Generate a list of full protobuf element names
-protolinter list <file.proto>
+# Генерация и вывод в консоль файла конфигурации
+# с полными именами элементов protobuf, где были обнаружены ошибки при проверке
+protolinter print-config [--config=<path>] <file.proto>
 ```
 
-## Configuration
+## Конфигурация
 
-Protolinter supports configuration through a .protolinter.yaml file.\
-If the configuration file is absent, Protolinter will work with default settings, performing all checks and not excluding any proto descriptors from analysis.\
-You can define excluded checks and descriptors to customize the analysis according to your project's needs.\
-An example configuration file can be found in `.protolinter.example.yaml`.
+Protolinter поддерживает настройку через файл .protolinter.yaml.\
+Если файл конфигурации отсутствует, Protolinter будет работать с настройками по умолчанию, выполняя все проверки и не исключая ни одного proto-дескриптора из анализа.\
+Вы можете определить исключенные проверки и дескрипторы для настройки анализа согласно потребностям вашего проекта.\
+Пример файла конфигурации можно найти в `.protolinter.example.yaml`.\
+Кроме того, вы можете сгенерировать файл конфигурации с помощью следующей команды:
+```sh
+protolinter print-config -m mimir.yaml > .protolinter.yaml
+```
+В корне данного проекта размещены два файла для удобства разработчика:\
+`Makefile.example` - это пример файла Makefile.\
+`.gitlab-ci.example.yaml` - это пример Gitlab CI/CD задания для protolinter.\
+Вы можете скопировать эти файлы в ваш проект и отредактировать их под свои нужды.
 
-## Checks Performed
+## Выполняемые проверки
 
-Protolinter performs various checks on your Protocol Buffer files to ensure their compliance.\
-The following checks can be excluded from analysis in the configuration file:
+Protolinter выполняет различные проверки ваших файлов Protocol Buffer.\
+Следующие проверки могут быть исключены из анализа в файле конфигурации:
 
-- `method_has_version`: Checks whether a method specifies a version.
-- `method_has_correct_input_name`: Checks if the method input is named correctly.
-- `method_has_http_path`: Checks if an HTTP path is specified for the method.
-- `method_has_body_tag`: Checks if methods with a required body have the correct body tag.
-- `method_has_swagger_tags`: Checks if a method has appropriate Swagger tags.
-- `method_has_swagger_summary`: Checks if a method has a valid Swagger summary.
-- `method_has_swagger_description`: Checks if a method has a valid Swagger description.
-- `field_has_correct_json_name`: Checks if a field's JSON name tag is correct.
-- `field_has_no_description`: Checks if a field has no description.
-- `field_description_starts_with_capital`: Checks if a field's description starts with a capital letter.
-- `field_description_ends_with_dot`: Checks if a field's description ends with a dot.
-- `enum_value_has_comments`: Checks if an enum value has leading comments.
+- `enum_value_has_comments`: Проверяет, есть ли ведущие комментарии у значения перечисления.
+- `field_description_ends_with_dot_or_question_mark`: Проверяет, заканчивается ли описание поля точкой или знаком вопроса.
+- `field_description_starts_with_capital`: Проверяет, начинается ли описание поля с заглавной буквы.
+- `field_has_correct_json_name`: Проверяет, правильно ли указан тег JSON-имени для поля.
+- `field_has_no_description`: Проверяет, есть ли описание у поля.
+- `field_name_is_snake_case`: Проверяет, задано ли имя поля в формате snake_case.
+- `method_has_body_tag`: Проверяет, правильно ли у методов с обязательным телом указан тег тела.
+- `method_has_correct_input_name`: Проверяет, правильно ли назван входной параметр метода.
+- `method_has_default_error_response`: Проверяет, указан ли формат ошибки по умолчанию в описании Swagger для метода.
+- `method_has_http_path`: Проверяет, указан ли HTTP-путь для метода.
+- `method_has_swagger_description`: Проверяет, имеется ли допустимое описание Swagger для метода.
+- `method_has_swagger_summary`: Проверяет, имеется ли допустимое краткое описание Swagger для метода.
+- `method_has_swagger_tags`: Проверяет, имеются ли соответствующие теги Swagger для метода.
+- `method_has_version`: Проверяет, указана ли версия для метода.
 
-## Translations
+## Локализация
 
-[Документация на русском языке](README.ru.md)
+[Documentation in English](README.en.md)

@@ -25,7 +25,9 @@ const (
 	bytesMessageFullname  protoreflect.FullName    = "google.protobuf.BytesValue"
 	bytesValueFieldNumber protoreflect.FieldNumber = 1
 
-	fieldMaskFullName protoreflect.FullName = "google.protobuf.FieldMask"
+	fieldMaskFullName     protoreflect.FullName = "google.protobuf.FieldMask"
+	responseFieldFullName protoreflect.FullName = "grpc.gateway.protoc_gen_openapiv2.options.Response"
+	responseEntryFullName protoreflect.FullName = "grpc.gateway.protoc_gen_openapiv2.options.Operation.ResponsesEntry"
 )
 
 func marshalTimestamp(m protoreflect.Message) (string, error) {

@@ -1,3 +1,4 @@
+// Package parser provides functions for parsing and encoding Protobuf messages into URL values.
 package parser
 
 import (
@@ -157,6 +158,7 @@ func encodeMapField(fieldDescriptor protoreflect.FieldDescriptor, mp protoreflec
 		}
 
 		result[key] = value
+
 		return true
 	})
 
@@ -194,13 +196,13 @@ func encodeMessage(msgDescriptor protoreflect.MessageDescriptor, value protorefl
 		}
 
 		return strings.Join(m.Paths, ","), nil
+	case responseFieldFullName, responseEntryFullName:
+		return value.String(), nil
 	default:
 		return "", fmt.Errorf("unsupported message type: %q", string(msgDescriptor.FullName()))
 	}
 }
 
-// convertSnakeCaseToCamelCase преобразует имя идентификатор из snake_case в camelCase,
-// согласно спецификации protobuf:
 // https://github.com/protocolbuffers/protobuf-go/blob/master/encoding/protojson/well_known_types.go#L842
 func convertSnakeCaseToCamelCase(s string) string {
 	var (

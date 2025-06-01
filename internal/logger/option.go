@@ -10,15 +10,15 @@ type coreWithLevel struct {
 	level zapcore.Level
 }
 
-// Enabled возвращает true, если предоставленный уровень включен для логирования ядром.
-// Он вызывает метод Enabled у обернутого zapcore.Level.
+// Enabled returns true if the provided log level is enabled for logging by the core.
+// It calls the Enabled method on the wrapped zapcore.Level.
 func (c *coreWithLevel) Enabled(l zapcore.Level) bool {
 	return c.level.Enabled(l)
 }
 
-// Check добавляет ядро к проверенной записи, если уровень записи включен для логирования.
-// Он возвращает проверенную запись с добавленным ядром или исходную проверенную запись,
-// если уровень отключен.
+// Check adds the core to a checked entry if the log entry level is enabled for logging.
+// It returns the checked entry with the added core or the original checked entry
+// if the level is disabled.
 func (c *coreWithLevel) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
 	if c.Enabled(ent.Level) {
 		return ce.AddCore(ent, c)
@@ -27,8 +27,8 @@ func (c *coreWithLevel) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapc
 	return ce
 }
 
-// With возвращает новое ядро с добавленными полями к обернутому ядру.
-// Он возвращает новый coreWithLevel с тем же уровнем, что и у исходного ядра.
+// With returns a new core with added fields to the wrapped core.
+// It returns a new coreWithLevel with the same level as the original core.
 func (c *coreWithLevel) With(fields []zapcore.Field) zapcore.Core {
 	return &coreWithLevel{
 		c.Core.With(fields),
@@ -36,10 +36,8 @@ func (c *coreWithLevel) With(fields []zapcore.Field) zapcore.Core {
 	}
 }
 
-// WithLevel представляет собой опцию, которая создает логгер
-// с указанным уровнем логирования на основе существующего логгера.
-// Он возвращает zap.Option, который оборачивает существующее ядро
-// в coreWithLevel с указанным уровнем.
+// WithLevel is an option that creates a logger with the specified logging level based on an existing logger.
+// It returns a zap.Option that wraps the existing core in a coreWithLevel with the specified level.
 func WithLevel(lvl zapcore.Level) zap.Option {
 	return zap.WrapCore(
 		func(core zapcore.Core) zapcore.Core {

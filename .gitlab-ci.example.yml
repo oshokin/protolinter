@@ -1,0 +1,22 @@
+protolinter:
+  extends: .go
+  tags: [build, $RUNNER_ENV_TAG]
+  variables:
+    PROTOLINTER_TAG: "latest"
+  script:
+    - git fetch -q origin
+    - FILES=$(git diff --name-only ${CI_COMMIT_SHA} origin/master | grep '\.proto$' || true)
+    - >
+      if [ -z "$FILES" ]; then
+        echo "No changes in '*.proto' files found in git diff."
+        exit 0
+      else
+        GOBIN="${CI_PROJECT_DIR}" go install github.com/oshokin/protolinter@${PROTOLINTER_TAG}
+        ./protolinter check --github-url=https://artifactory.big-freaking-company.com/artifactory/files/github.com $FILES
+      fi
+  allow_failure: true
+  except:
+    - schedules
+    - tags
+    - /^(hotfix)\/.+$/
+    - master

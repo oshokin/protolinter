@@ -5,20 +5,13 @@ OS:=$(shell go env GOOS)
 ARCH:=$(shell go env GOARCH)
 LOCAL_BIN:=$(CURDIR)/bin
 GOLANGCI_BIN:=$(LOCAL_BIN)/golangci-lint
-GOLANGCI_TAG:=1.53.3
+GOLANGCI_TAG:=1.64.8
 GOLANGCI_CONFIG:=.golangci.yaml
 GOLANGCI_STRICT_CONFIG:=.golangci-strict.yaml
 
-ifneq ($(wildcard $(GOLANGCI_BIN)),)
-GOLANGCI_BIN_VERSION:=$(shell $(GOLANGCI_BIN) --version)
-ifneq ($(GOLANGCI_BIN_VERSION),)
-GOLANGCI_BIN_VERSION_SHORT:=$(shell echo "$(GOLANGCI_BIN_VERSION)" | sed -E 's/.* version (.*) built .* from .*/\1/g')
-else
-GOLANGCI_BIN_VERSION_SHORT:=0
-endif
-ifneq "$(GOLANGCI_TAG)" "$(word 1, $(sort $(GOLANGCI_TAG) $(GOLANGCI_BIN_VERSION_SHORT)))"
+GOLANGCI_BIN_VERSION := $(shell $(GOLANGCI_BIN) --version 2> /dev/null | sed -E 's/.* version v(.*) built .* from .*/\1/g')
+ifneq ($(GOLANGCI_BIN_VERSION),$(GOLANGCI_TAG))
 GOLANGCI_BIN:=
-endif
 endif
 
 default: help
@@ -77,10 +70,10 @@ help:
 	@echo "Available targets:"
 	@echo "  help                    Show this help message"
 	@echo "  install-lint            Download and install golangci-lint to $(LOCAL_BIN) directory if it's not already installed"
-	@echo "  lint                    Run golangci-lint with normal checks and compare changes against master branch."
-	@echo "  lint-strict             Same as 'lint', but with more strict checks."
-	@echo "  lint-full               Run golangci-lint with normal checks for all files in the repository."
-	@echo "  lint-strict-full        Same as 'lint-full', but with more strict checks."
+	@echo "  lint                    Run golangci-lint with normal checks and compare changes against master branch"
+	@echo "  lint-strict             Same as 'lint', but with more strict checks"
+	@echo "  lint-full               Run golangci-lint with normal checks for all files in the repository"
+	@echo "  lint-strict-full        Same as 'lint-full', but with more strict checks"
 	@echo "  test                    Run unit tests"
 	@echo "  build                   Build the $(APP) binary for $(OS)/$(ARCH)"
 	@echo "  run                     Run the $(APP) binary"

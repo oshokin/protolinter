@@ -1,0 +1,13 @@
+include:
+  - project: pub/ci
+    ref: 0.0.6
+    file: .go-library.gitlab-ci.yml
+
+variables:
+  SKIP_AUTOCREATE_CODE_REVIEW_MR: "yes"
+
+go tests:
+  rules:
+    - if: $GO_VERSION == "1.21"
+      when: never
+    - allow_failure: false

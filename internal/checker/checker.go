@@ -1,3 +1,5 @@
+// Package checker provides functionality for checking and validating
+// Protocol Buffer (protobuf) files and their contents against predefined rules and conventions.
 package checker
 
 import (
@@ -6,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/bufbuild/protocompile"
 	"github.com/bufbuild/protocompile/linker"
@@ -29,61 +32,91 @@ const (
 	MethodHasSwaggerSummary = "method_has_swagger_summary"
 	// MethodHasSwaggerDescription checks if a method has a valid Swagger description.
 	MethodHasSwaggerDescription = "method_has_swagger_description"
+	// MethodHasDefaultErrorResponse checks if a default error response is defined in the method.
+	MethodHasDefaultErrorResponse = "method_has_default_error_response"
+	// FieldNameIsSnakeCase checks if a field's name is in snake_case.
+	FieldNameIsSnakeCase = "field_name_is_snake_case"
 	// FieldHasCorrectJSONName checks if a field's JSON name tag is correct.
 	FieldHasCorrectJSONName = "field_has_correct_json_name"
 	// FieldHasNoDescription checks if a field has no description.
 	FieldHasNoDescription = "field_has_no_description"
 	// FieldDescriptionStartsWithCapital checks if a field's description starts with a capital letter.
 	FieldDescriptionStartsWithCapital = "field_description_starts_with_capital"
-	// FieldDescriptionEndsWithDot checks if a field's description ends with a dot.
-	FieldDescriptionEndsWithDot = "field_description_ends_with_dot"
+	// FieldDescriptionEndsWithDotOrQuestionMark checks if a field's description ends with a dot or a question mark.
+	FieldDescriptionEndsWithDotOrQuestionMark = "field_description_ends_with_dot_or_question_mark"
 	// EnumValueHasComments checks if an enum value has leading comments.
 	EnumValueHasComments = "enum_value_has_comments"
 )
 
-const validMethodNamePattern = `^[A-Z][A-Za-z0-9]*V\d+$`
+const (
+	snakeCaseNamePattern   = "^[a-z][a-z0-9_]*$"
+	validMethodNamePattern = `^[A-Z][A-Za-z0-9]*V\d+$`
+)
 
-var validMethodNameRegexp = regexp.MustCompile(validMethodNamePattern)
+var (
+	snakeCaseNameRegexp   = regexp.MustCompile(snakeCaseNamePattern)
+	validMethodNameRegexp = regexp.MustCompile(validMethodNamePattern)
+)
 
 // NewProtoChecker creates a new ProtoChecker instance.
-func NewProtoChecker(ctx context.Context, cfg *config.Config) *ProtoChecker {
+func NewProtoChecker(ctx context.Context, cfg *config.Config, filesCount int) *ProtoChecker {
 	result := &ProtoChecker{
-		compiler: &protocompile.Compiler{
-			Resolver:       protocompile.WithStandardImports(getSourceResolver(ctx, cfg)),
-			SourceInfoMode: protocompile.SourceInfoExtraComments | protocompile.SourceInfoExtraOptionLocations,
-		},
+		config:     cfg,
+		cache:      make(map[string][]byte, filesCount),
+		cacheMutex: &sync.Mutex{},
 	}
 
-	result.config = cfg
+	result.compiler = &protocompile.Compiler{
+		Resolver:       protocompile.WithStandardImports(result.getSourceResolver(ctx, cfg)),
+		SourceInfoMode: protocompile.SourceInfoExtraComments | protocompile.SourceInfoExtraOptionLocations,
+	}
 
 	return result
 }
 
-// CheckFiles performs checks on the provided protobuf files and returns
-// a list of CheckResult instances, each containing the checking results for a single file.
-// It uses the compiler and parser associated with the ProtoChecker instance.
-func (c *ProtoChecker) CheckFiles(ctx context.Context, files ...string) ([]*CheckResult, error) {
-	parsedFiles, err := c.compiler.Compile(ctx, files...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile files %s: %w", files, err)
-	}
+// CheckFiles performs check operation on the provided protobuf files and returns
+// a list of OperationResult instances, each containing the results for a single file.
+func (c *ProtoChecker) CheckFiles(ctx context.Context, files []string) ([]*OperationResult, error) {
+	return c.processFiles(ctx, files, c.checkFile)
+}
 
-	result := make([]*CheckResult, 0, len(parsedFiles))
+func (c *ProtoChecker) processFiles(
+	ctx context.Context,
+	files []string,
+	processor func(linker.File) *OperationResult,
+) ([]*OperationResult, error) {
+	result := make([]*OperationResult, 0, len(files))
 
-	for _, parsedFile := range parsedFiles {
-		result = append(result, c.checkFile(parsedFile))
+	for _, file := range files {
+		parsedFiles, err := c.compiler.Compile(ctx, file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile file %s: %w", file, err)
+		}
+
+		parsedFile := parsedFiles.FindFileByPath(file)
+		if parsedFile == nil {
+			continue
+		}
+
+		result = append(result, processor(parsedFile))
 	}
 
 	return result, nil
 }
 
-func (c *ProtoChecker) checkFile(parsedFile linker.File) *CheckResult {
-	result := NewCheckResult(parsedFile, c.config)
+func (c *ProtoChecker) checkFile(parsedFile linker.File) *OperationResult {
+	result := NewOperationResult(parsedFile, c.config)
 	packageName := string(parsedFile.Package().Name())
 	parsedFileFullName := string(parsedFile.FullName())
 
+	if c.config.GetPrintAllDescriptors() {
+		result.descriptors = append(result.descriptors, parsedFileFullName)
+	}
+
 	if c.shouldDescriptorBeSkipped(parsedFileFullName) {
-		result.AddMessagef("Package %s is skipped", packageName)
+		if c.config.GetVerboseMode() {
+			result.AddMessagef("Package %s is skipped", packageName)
+		}
 
 		return result
 	}
@@ -97,7 +130,7 @@ func (c *ProtoChecker) checkFile(parsedFile linker.File) *CheckResult {
 
 func (c *ProtoChecker) checkServices(
 	services protoreflect.ServiceDescriptors,
-	result *CheckResult,
+	result *OperationResult,
 	parsedFileFullName string,
 ) {
 	servicesCount := services.Len()
@@ -106,8 +139,14 @@ func (c *ProtoChecker) checkServices(
 		serviceName := string(service.Name())
 		serviceFullName := string(service.FullName())
 
+		if c.config.GetPrintAllDescriptors() {
+			result.descriptors = append(result.descriptors, serviceFullName)
+		}
+
 		if c.shouldDescriptorBeSkipped(serviceFullName) {
-			result.AddMessagef("Service %s is skipped", serviceName)
+			if c.config.GetVerboseMode() {
+				result.AddMessagef("Service %s is skipped", serviceName)
+			}
 
 			continue
 		}
@@ -117,7 +156,7 @@ func (c *ProtoChecker) checkServices(
 }
 
 func (c *ProtoChecker) checkMethods(methods protoreflect.MethodDescriptors,
-	result *CheckResult,
+	result *OperationResult,
 	serviceName string,
 	servicesCount int,
 	parsedFileFullName string,
@@ -132,8 +171,14 @@ func (c *ProtoChecker) checkMethods(methods protoreflect.MethodDescriptors,
 			servicesCount,
 			methodFullName)
 
+		if c.config.GetPrintAllDescriptors() {
+			result.descriptors = append(result.descriptors, methodFullName)
+		}
+
 		if c.shouldDescriptorBeSkipped(methodFullName) {
-			result.AddMessagef("Method %s is skipped", methodLogName)
+			if c.config.GetVerboseMode() {
+				result.AddMessagef("Method %s is skipped", methodLogName)
+			}
 
 			continue
 		}
@@ -146,6 +191,10 @@ func (c *ProtoChecker) checkMethods(methods protoreflect.MethodDescriptors,
 				"Name of method %s doesn't match regular expression: %s",
 				methodLogName,
 				validMethodNamePattern)
+
+			if !c.config.GetPrintAllDescriptors() {
+				result.descriptors = append(result.descriptors, methodFullName)
+			}
 		}
 
 		inputName := string(method.Input().Name())
@@ -162,26 +211,30 @@ func (c *ProtoChecker) checkMethods(methods protoreflect.MethodDescriptors,
 					"Input of method %s should be named as %s",
 					methodLogName,
 					expectedInputName)
+
+				if !c.config.GetPrintAllDescriptors() {
+					result.descriptors = append(result.descriptors, methodFullName)
+				}
 			}
 		}
 
-		c.checkMethodOptions(method, result, methodLogName)
+		c.checkMethodOptions(method, result, methodFullName, methodLogName)
 	}
 }
 
 func (c *ProtoChecker) checkMethodOptions(
 	method protoreflect.Descriptor,
-	result *CheckResult,
+	result *OperationResult,
+	methodFullName string,
 	methodLogName string,
 ) {
 	method.Options().ProtoReflect().Range(
 		func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
 			optionFullName := string(fd.FullName())
-			optionMessage := v.Message()
 
 			switch optionFullName {
 			case "google.api.http":
-				parsedOptions, err := parser.ParseProtoMessageValues(optionMessage)
+				parsedOptions, err := parser.ParseProtoMessageValues(v.Message())
 				if err != nil {
 					result.AddMessagef(
 						"Failed to parse option %s of method %s: %s",
@@ -199,6 +252,10 @@ func (c *ProtoChecker) checkMethodOptions(
 						method,
 						"Path of method %s is not specified",
 						methodLogName)
+
+					if !c.config.GetPrintAllDescriptors() {
+						result.descriptors = append(result.descriptors, methodFullName)
+					}
 				}
 
 				if !c.config.IsCheckExcluded(MethodHasBodyTag) &&
@@ -208,9 +265,13 @@ func (c *ProtoChecker) checkMethodOptions(
 						method,
 						"Method %s doesn't have body tag or body is not equal to *",
 						methodLogName)
+
+					if !c.config.GetPrintAllDescriptors() {
+						result.descriptors = append(result.descriptors, methodFullName)
+					}
 				}
 			case "grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation":
-				parsedOptions, err := parser.ParseProtoMessageValues(optionMessage)
+				parsedOptions, err := parser.ParseProtoMessageValues(v.Message())
 				if err != nil {
 					result.AddMessagef(
 						"Failed to parse option %s of method %s: %s",
@@ -227,6 +288,10 @@ func (c *ProtoChecker) checkMethodOptions(
 						method,
 						"Method %s has no swagger tags",
 						methodLogName)
+
+					if !c.config.GetPrintAllDescriptors() {
+						result.descriptors = append(result.descriptors, methodFullName)
+					}
 				}
 
 				if !c.config.IsCheckExcluded(MethodHasSwaggerSummary) &&
@@ -235,6 +300,10 @@ func (c *ProtoChecker) checkMethodOptions(
 						method,
 						"Method %s has no swagger summary",
 						methodLogName)
+
+					if !c.config.GetPrintAllDescriptors() {
+						result.descriptors = append(result.descriptors, methodFullName)
+					}
 				}
 
 				if !c.config.IsCheckExcluded(MethodHasSwaggerDescription) &&
@@ -243,6 +312,19 @@ func (c *ProtoChecker) checkMethodOptions(
 						method,
 						"Method %s has no swagger description",
 						methodLogName)
+
+					if !c.config.GetPrintAllDescriptors() {
+						result.descriptors = append(result.descriptors, methodFullName)
+					}
+				}
+
+				if !c.config.IsCheckExcluded(MethodHasDefaultErrorResponse) {
+					if parsedOptions.Get("responses[default]") == "" {
+						result.AddErrorf(
+							method,
+							"Method %s doesn't have a default error response",
+							methodLogName)
+					}
 				}
 			}
 
@@ -252,7 +334,7 @@ func (c *ProtoChecker) checkMethodOptions(
 
 func (c *ProtoChecker) checkMessages(
 	messages protoreflect.MessageDescriptors,
-	result *CheckResult,
+	result *OperationResult,
 	parsedFile linker.File,
 ) {
 	parsedFileFullName := string(parsedFile.FullName())
@@ -267,8 +349,14 @@ func (c *ProtoChecker) checkMessages(
 			0,
 			messageFullName)
 
+		if c.config.GetPrintAllDescriptors() {
+			result.descriptors = append(result.descriptors, messageFullName)
+		}
+
 		if c.shouldDescriptorBeSkipped(messageFullName) {
-			result.AddMessagef("Message %s is skipped", messageLogName)
+			if c.config.GetVerboseMode() {
+				result.AddMessagef("Message %s is skipped", messageLogName)
+			}
 
 			continue
 		}
@@ -281,7 +369,7 @@ func (c *ProtoChecker) checkMessages(
 
 func (c *ProtoChecker) checkMessageFields(
 	fields protoreflect.FieldDescriptors,
-	result *CheckResult,
+	result *OperationResult,
 	parsedFileFullName string,
 ) {
 	for fieldIndex := 0; fieldIndex < fields.Len(); fieldIndex++ {
@@ -295,10 +383,30 @@ func (c *ProtoChecker) checkMessageFields(
 			0,
 			fieldFullName)
 
+		if c.config.GetPrintAllDescriptors() {
+			result.descriptors = append(result.descriptors, fieldFullName)
+		}
+
 		if c.shouldDescriptorBeSkipped(fieldFullName) {
-			result.AddMessagef("Field %s is skipped", fieldLogName)
+			if c.config.GetVerboseMode() {
+				result.AddMessagef("Field %s is skipped", fieldLogName)
+			}
 
 			continue
+		}
+
+		isFieldNameSnakeCase := len(snakeCaseNameRegexp.FindStringIndex(fieldName)) > 0
+		if !c.config.IsCheckExcluded(FieldNameIsSnakeCase) &&
+			!isFieldNameSnakeCase {
+			result.AddErrorf(
+				field,
+				"Name of field %s doesn't match regular expression: %s",
+				fieldLogName,
+				snakeCaseNamePattern)
+
+			if !c.config.GetPrintAllDescriptors() {
+				result.descriptors = append(result.descriptors, fieldFullName)
+			}
 		}
 
 		fieldJSONName := field.JSONName()
@@ -309,14 +417,19 @@ func (c *ProtoChecker) checkMessageFields(
 				field,
 				"Field %s has incorrect json_name tag",
 				fieldLogName)
+
+			if !c.config.GetPrintAllDescriptors() {
+				result.descriptors = append(result.descriptors, fieldFullName)
+			}
 		}
 
-		c.checkFieldOptions(field, result, fieldLogName)
+		c.checkFieldOptions(field, result, fieldFullName, fieldLogName)
 	}
 }
 
 func (c *ProtoChecker) checkFieldOptions(field protoreflect.FieldDescriptor,
-	result *CheckResult,
+	result *OperationResult,
+	fieldFullName string,
 	fieldLogName string,
 ) {
 	field.Options().ProtoReflect().Range(
@@ -345,6 +458,10 @@ func (c *ProtoChecker) checkFieldOptions(field protoreflect.FieldDescriptor,
 					field,
 					"Field %s in doesn't have description",
 					fieldLogName)
+
+				if !c.config.GetPrintAllDescriptors() {
+					result.descriptors = append(result.descriptors, fieldFullName)
+				}
 			}
 
 			if !c.config.IsCheckExcluded(FieldDescriptionStartsWithCapital) &&
@@ -354,15 +471,24 @@ func (c *ProtoChecker) checkFieldOptions(field protoreflect.FieldDescriptor,
 					field,
 					"Description of field %s doesn't start with capital letter",
 					fieldLogName)
+
+				if !c.config.GetPrintAllDescriptors() {
+					result.descriptors = append(result.descriptors, fieldFullName)
+				}
 			}
 
-			if !c.config.IsCheckExcluded(FieldDescriptionEndsWithDot) &&
+			if !c.config.IsCheckExcluded(FieldDescriptionEndsWithDotOrQuestionMark) &&
 				fieldDescription != "" &&
-				!strings.HasSuffix(fieldDescription, ".") {
+				!strings.HasSuffix(fieldDescription, ".") &&
+				!strings.HasSuffix(fieldDescription, "?") {
 				result.AddErrorf(
 					field,
-					"Description of field %s must end with dot",
+					"Description of field %s must end with dot or question mark",
 					fieldLogName)
+
+				if !c.config.GetPrintAllDescriptors() {
+					result.descriptors = append(result.descriptors, fieldFullName)
+				}
 			}
 
 			return true
@@ -371,7 +497,7 @@ func (c *ProtoChecker) checkFieldOptions(field protoreflect.FieldDescriptor,
 
 func (c *ProtoChecker) checkEnums(
 	enums protoreflect.EnumDescriptors,
-	result *CheckResult,
+	result *OperationResult,
 	parsedFile linker.File,
 ) {
 	parsedFileFullName := string(parsedFile.FullName())
@@ -385,8 +511,14 @@ func (c *ProtoChecker) checkEnums(
 			0,
 			enumFullName)
 
+		if c.config.GetPrintAllDescriptors() {
+			result.descriptors = append(result.descriptors, enumFullName)
+		}
+
 		if c.shouldDescriptorBeSkipped(enumFullName) {
-			result.AddMessagef("Enum %s is skipped", enumLogName)
+			if c.config.GetVerboseMode() {
+				result.AddMessagef("Enum %s is skipped", enumLogName)
+			}
 
 			continue
 		}
@@ -401,8 +533,14 @@ func (c *ProtoChecker) checkEnums(
 				enumValueLogName  = strings.Join([]string{enumLogName, enumValueName}, ".")
 			)
 
+			if c.config.GetPrintAllDescriptors() {
+				result.descriptors = append(result.descriptors, enumValueFullName)
+			}
+
 			if c.shouldDescriptorBeSkipped(enumValueFullName) {
-				result.AddMessagef("Enum value %s is skipped", enumValueLogName)
+				if c.config.GetVerboseMode() {
+					result.AddMessagef("Enum value %s is skipped", enumValueLogName)
+				}
 
 				continue
 			}
@@ -422,6 +560,10 @@ func (c *ProtoChecker) checkEnums(
 						enumValue,
 						"Enum value %s has no leading comments",
 						enumValueLogName)
+
+					if !c.config.GetPrintAllDescriptors() {
+						result.descriptors = append(result.descriptors, enumValueFullName)
+					}
 				}
 			}
 		}
